@@ -210,11 +210,30 @@ public class SyncCoordinator : ISyncCoordinator
     /// パスの妥当性を検証します。
     /// ソースが存在しない場合は例外を投げます。
     /// ターゲットが存在しない場合は作成します。
+    /// ソースとターゲットが同一、または一方が他方のサブフォルダである場合は例外を投げます。
     /// </summary>
     private void ValidatePaths(string sourcePath, string targetPath)
     {
         if (!_fileOps.DirectoryExists(sourcePath))
             throw new DirectoryNotFoundException($"ソースフォルダが見つかりません: {sourcePath}");
+
+        // パスを正規化して比較（大文字小文字・末尾スラッシュの違いを吸収）
+        string normalizedSource = Path.GetFullPath(sourcePath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        string normalizedTarget = Path.GetFullPath(targetPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+        if (string.Equals(normalizedSource, normalizedTarget, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException($"ソースとターゲットが同じフォルダを指しています: {normalizedSource}");
+
+        string sourcePrefix = normalizedSource + Path.DirectorySeparatorChar;
+        string targetPrefix = normalizedTarget + Path.DirectorySeparatorChar;
+
+        if (normalizedTarget.StartsWith(sourcePrefix, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                $"ターゲットフォルダ '{normalizedTarget}' はソースフォルダ '{normalizedSource}' のサブフォルダです。循環参照が発生するため同期できません。");
+
+        if (normalizedSource.StartsWith(targetPrefix, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                $"ソースフォルダ '{normalizedSource}' はターゲットフォルダ '{normalizedTarget}' のサブフォルダです。循環参照が発生するため同期できません。");
 
         if (!_fileOps.DirectoryExists(targetPath))
         {
