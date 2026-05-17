@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="FolderSyncModule.Library/FolderSyncModule.Library.csproj" />
+  <Project Path="HelloWorldApp.Tests/HelloWorldApp.Tests.csproj" />
+  <Project Path="HelloWorldApp/HelloWorldApp.csproj" />
+</Solution>
