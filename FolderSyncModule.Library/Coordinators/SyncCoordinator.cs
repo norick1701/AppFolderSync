@@ -1,3 +1,8 @@
+using System.Diagnostics;
+using FolderSyncModule.Library.Models;
+using FolderSyncModule.Library.Utils;
+using FolderSyncModule.Library.Logging;
+
 namespace FolderSyncModule.Library;
 
 /// <summary>
@@ -9,15 +14,17 @@ public class SyncCoordinator : ISyncCoordinator
 {
     private readonly IFileSystemOperations _fileOps;
     private readonly IDiffDetector _diffDetector;
+    private readonly ILogger _logger;
     private RealtimeSyncWatcher? _sourceWatcher;
     private RealtimeSyncWatcher? _targetWatcher;
+    private bool _disposed;
 
     /// <summary>
     /// デフォルトコンストラクタ。
     /// 標準的なファイルシステム操作と差分検出を使用します。
     /// </summary>
     public SyncCoordinator()
-        : this(new FileSystemOperations(), new DiffDetector())
+        : this(new FileSystemOperations(), new DiffDetector(), new ConsoleLogger())
     {
     }
 
@@ -26,31 +33,65 @@ public class SyncCoordinator : ISyncCoordinator
     /// 依存するコンポーネントを外部から注入可能にします。
     /// テスト時にモックを渡すことで動作を検証できます。
     /// </summary>
-    public SyncCoordinator(IFileSystemOperations fileOps, IDiffDetector diffDetector)
+    public SyncCoordinator(IFileSystemOperations fileOps, IDiffDetector diffDetector, ILogger? logger = null)
     {
         _fileOps = fileOps;
         _diffDetector = diffDetector;
+        _logger = logger ?? new ConsoleLogger();
     }
 
     /// <summary>
     /// フォルダの同期を実行します。
     /// 指定された設定に従い、ワンタイム同期またはリアルタイム監視を行います。
     /// </summary>
-    public void Sync(string sourcePath, string targetPath, SyncMode mode, SyncType syncType, SyncScope scope)
+    public SyncResult Sync(string sourcePath, string targetPath, SyncMode mode, SyncType syncType, SyncScope scope)
     {
-        ValidatePaths(sourcePath, targetPath);
-
-        Console.WriteLine($"同期モード: {(mode == SyncMode.OneWay ? "単向同期" : "双方向同期")}");
-        Console.WriteLine($"同期タイプ: {(syncType == SyncType.OneTime ? "ワンタイム同期" : "リアルタイム監視")}");
-        Console.WriteLine($"同期範囲: {GetScopeDescription(scope)}\n");
-
-        // ワンタイム同期を実行
-        PerformSync(sourcePath, targetPath, mode, scope);
-
-        // リアルタイム監視が指定されている場合は開始
-        if (syncType == SyncType.Realtime)
+        var stopwatch = Stopwatch.StartNew();
+        
+        try
         {
-            StartRealtimeSync(sourcePath, targetPath, mode, scope);
+            ValidatePaths(sourcePath, targetPath);
+
+            _logger.Info($"同期モード: {(mode == SyncMode.OneWay ? "単向同期" : "双方向同期")}");
+            _logger.Info($"同期タイプ: {(syncType == SyncType.OneTime ? "ワンタイム同期" : "リアルタイム監視")}");
+            _logger.Info($"同期範囲: {GetScopeDescription(scope)}");
+
+            // ワンタイム同期を実行
+            var result = PerformSync(sourcePath, targetPath, mode, scope);
+
+            // リアルタイム監視が指定されている場合は開始
+            if (syncType == SyncType.Realtime)
+            {
+                StartRealtimeSync(sourcePath, targetPath, mode, scope);
+            }
+
+            stopwatch.Stop();
+            
+            // 実行時間を更新して返す
+            if (result.IsSuccess)
+            {
+                return SyncResult.Success(
+                    result.FilesSucceeded,
+                    result.FilesDeleted,
+                    result.TotalBytesCopied,
+                    stopwatch.Elapsed);
+            }
+            else
+            {
+                return SyncResult.PartialSuccess(
+                    result.FilesSucceeded,
+                    result.FilesFailed,
+                    result.FilesDeleted,
+                    result.TotalBytesCopied,
+                    stopwatch.Elapsed,
+                    result.Errors);
+            }
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+            _logger.Error($"同期失敗: {ex.Message}", ex);
+            return SyncResult.Failure($"{ex.GetType().Name}: {ex.Message}");
         }
     }
 
@@ -61,55 +102,118 @@ public class SyncCoordinator : ISyncCoordinator
     {
         _sourceWatcher?.StopWatching();
         _targetWatcher?.StopWatching();
-        Console.WriteLine("\n✓ リアルタイム監視を停止しました");
+        _logger.Info("リアルタイム監視を停止しました");
     }
 
     /// <summary>
     /// 実際の同期処理を実行します。
     /// 同期スコープに応じた戦略を選択し、実行します。
     /// </summary>
-    private void PerformSync(string sourcePath, string targetPath, SyncMode mode, SyncScope scope)
+    private SyncResult PerformSync(string sourcePath, string targetPath, SyncMode mode, SyncScope scope)
     {
+        var errors = new List<SyncError>();
+        int filesSucceeded = 0;
+        int filesFailed = 0;
+        int filesDeleted = 0;
+        long totalBytesCopied = 0;
+
         var strategy = CreateStrategy(scope);
 
         // ソース → ターゲットの同期
-        SyncDirectoriesRecursive(sourcePath, targetPath, mode, scope);
-        strategy.SyncFiles(sourcePath, targetPath);
-        strategy.DeleteOrphanedFiles(sourcePath, targetPath);
+        var (dirSuccess, dirErrors) = SyncDirectoriesRecursive(sourcePath, targetPath, mode, scope);
+        errors.AddRange(dirErrors);
+
+        var (fileSuccess, fileFailed, bytesCopied, fileErrors) = 
+            strategy.SyncFilesWithResult(sourcePath, targetPath, _fileOps);
+        filesSucceeded += fileSuccess;
+        filesFailed += fileFailed;
+        totalBytesCopied += bytesCopied;
+        errors.AddRange(fileErrors);
+
+        var (deleteSuccess, deleteErrors) = 
+            strategy.DeleteOrphanedFilesWithResult(sourcePath, targetPath, _fileOps, _diffDetector);
+        filesDeleted += deleteSuccess;
+        errors.AddRange(deleteErrors);
 
         // 双方向同期の場合、ターゲット → ソースの同期も行う
         if (mode == SyncMode.TwoWay)
         {
-            Console.WriteLine("\nターゲット → ソースの同期:");
-            strategy.SyncFiles(targetPath, sourcePath);
-            strategy.DeleteOrphanedFiles(targetPath, sourcePath);
+            _logger.Info("ターゲット → ソースの同期:");
+            
+            var (fileSuccess2, fileFailed2, bytesCopied2, fileErrors2) = 
+                strategy.SyncFilesWithResult(targetPath, sourcePath, _fileOps);
+            filesSucceeded += fileSuccess2;
+            filesFailed += fileFailed2;
+            totalBytesCopied += bytesCopied2;
+            errors.AddRange(fileErrors2);
+
+            var (deleteSuccess2, deleteErrors2) = 
+                strategy.DeleteOrphanedFilesWithResult(targetPath, sourcePath, _fileOps, _diffDetector);
+            filesDeleted += deleteSuccess2;
+            errors.AddRange(deleteErrors2);
         }
 
-        Console.WriteLine("\n✓ 同期完了しました");
+        if (errors.Count == 0)
+        {
+            _logger.Info("同期完了しました");
+            return SyncResult.Success(filesSucceeded, filesDeleted, totalBytesCopied, TimeSpan.Zero);
+        }
+        else
+        {
+            _logger.Warning($"同期完了（{filesFailed}個のエラーあり）");
+            return SyncResult.PartialSuccess(filesSucceeded, filesFailed, filesDeleted, totalBytesCopied, TimeSpan.Zero, errors);
+        }
     }
 
     /// <summary>
     /// ディレクトリを再帰的に同期します。
     /// サブディレクトリが存在しない場合は作成します。
     /// </summary>
-    private void SyncDirectoriesRecursive(string sourcePath, string targetPath, SyncMode mode, SyncScope scope)
+    private (int success, List<SyncError> errors) SyncDirectoriesRecursive(string sourcePath, string targetPath, SyncMode mode, SyncScope scope)
     {
-        var sourceDirs = _fileOps.GetDirectories(sourcePath);
+        var errors = new List<SyncError>();
+        int success = 0;
+
+        var dirsResult = _fileOps.TryGetDirectories(sourcePath, excludeSymbolicLinks: true);
+        
+        if (!dirsResult.IsSuccess)
+        {
+            errors.Add(new SyncError(sourcePath, dirsResult.ErrorMessage ?? "ディレクトリ取得失敗", dirsResult.ExceptionType));
+            return (0, errors);
+        }
+
+        var sourceDirs = dirsResult.Value ?? Array.Empty<string>();
 
         foreach (var sourceDir in sourceDirs)
         {
-            string dirName = Path.GetFileName(sourceDir);
-            string targetDir = Path.Combine(targetPath, dirName);
-
-            if (!_fileOps.DirectoryExists(targetDir))
+            try
             {
-                _fileOps.CreateDirectory(targetDir);
-                Console.WriteLine($"✓ フォルダ作成: {dirName}");
-            }
+                string dirName = Path.GetFileName(sourceDir);
+                string targetDir = Path.Combine(targetPath, dirName);
 
-            // 再帰的に同期(ワンタイムに限定してスタックオーバーフローを防ぐ)
-            Sync(sourceDir, targetDir, mode, SyncType.OneTime, scope);
+                if (!_fileOps.DirectoryExists(targetDir))
+                {
+                    _fileOps.CreateDirectory(targetDir);
+                    _logger.Debug($"フォルダ作成: {dirName}");
+                }
+
+                // 再帰的に同期(ワンタイムに限定してスタックオーバーフローを防ぐ)
+                var result = Sync(sourceDir, targetDir, mode, SyncType.OneTime, scope);
+                
+                if (!result.IsSuccess && result.IsPartialSuccess)
+                {
+                    errors.AddRange(result.Errors);
+                }
+                
+                success++;
+            }
+            catch (Exception ex)
+            {
+                errors.Add(new SyncError(sourceDir, $"ディレクトリ同期エラー: {ex.Message}", ex.GetType().Name));
+            }
         }
+
+        return (success, errors);
     }
 
     /// <summary>
@@ -118,8 +222,8 @@ public class SyncCoordinator : ISyncCoordinator
     /// </summary>
     private void StartRealtimeSync(string sourcePath, string targetPath, SyncMode mode, SyncScope scope)
     {
-        Console.WriteLine("\n【リアルタイム監視開始】");
-        Console.WriteLine("ファイル変更を監視中... (終了するには Ctrl+C を押してください)\n");
+        _logger.Info("【リアルタイム監視開始】");
+        _logger.Info("ファイル変更を監視中... (終了するには Ctrl+C を押してください)");
 
         // ソースの変更を監視
         _sourceWatcher = new RealtimeSyncWatcher((path, basePath, action, relativePath) =>
@@ -140,24 +244,47 @@ public class SyncCoordinator : ISyncCoordinator
     /// </summary>
     private void OnSourceChanged(string path, string sourcePath, string targetPath, string action, string relativePath)
     {
-        string targetPath2 = Path.Combine(targetPath, relativePath);
-        Console.WriteLine($"[ソース {action}] {relativePath}");
+        try
+        {
+            // パストラバーサル検証
+            string targetPath2 = PathValidator.SafeCombine(targetPath, relativePath);
+            _logger.Debug($"[ソース {action}] {relativePath}");
 
-        if (action == "削除")
-        {
-            _fileOps.DeleteFile(targetPath2);
-            _fileOps.DeleteDirectory(targetPath2);
-            Console.WriteLine($"  ✓ ターゲットから削除");
+            if (action == "削除")
+            {
+                var deleteFileResult = _fileOps.TryDeleteFile(targetPath2);
+                var deleteDirResult = _fileOps.TryDeleteDirectory(targetPath2);
+                
+                if (deleteFileResult.IsSuccess || deleteDirResult.IsSuccess)
+                {
+                    _logger.Debug($"  ターゲットから削除");
+                }
+            }
+            else if (_fileOps.FileExists(path))
+            {
+                var copyResult = _fileOps.TryCopyFile(path, targetPath2);
+                if (copyResult.IsSuccess)
+                {
+                    _logger.Debug($"  ターゲットに反映");
+                }
+                else
+                {
+                    _logger.Error($"  エラー: {copyResult.ErrorMessage}");
+                }
+            }
+            else if (Directory.Exists(path))
+            {
+                _fileOps.CreateDirectory(targetPath2);
+                _logger.Debug($"  ターゲットフォルダ作成");
+            }
         }
-        else if (_fileOps.FileExists(path))
+        catch (InvalidOperationException ex)
         {
-            _fileOps.CopyFile(path, targetPath2);
-            Console.WriteLine($"  ✓ ターゲットに反映");
+            _logger.Error($"  セキュリティエラー: {ex.Message}", ex);
         }
-        else if (Directory.Exists(path))
+        catch (Exception ex)
         {
-            _fileOps.CreateDirectory(targetPath2);
-            Console.WriteLine($"  ✓ ターゲットフォルダ作成");
+            _logger.Error($"  エラー: {ex.Message}", ex);
         }
     }
 
@@ -167,18 +294,40 @@ public class SyncCoordinator : ISyncCoordinator
     /// </summary>
     private void OnTargetChanged(string path, string targetPath, string sourcePath, string action, string relativePath)
     {
-        string sourcePath2 = Path.Combine(sourcePath, relativePath);
-        Console.WriteLine($"[ターゲット {action}] {relativePath}");
+        try
+        {
+            // パストラバーサル検証
+            string sourcePath2 = PathValidator.SafeCombine(sourcePath, relativePath);
+            _logger.Debug($"[ターゲット {action}] {relativePath}");
 
-        if (action == "削除")
-        {
-            _fileOps.DeleteFile(sourcePath2);
-            Console.WriteLine($"  ✓ ソースから削除");
+            if (action == "削除")
+            {
+                var deleteResult = _fileOps.TryDeleteFile(sourcePath2);
+                if (deleteResult.IsSuccess)
+                {
+                    _logger.Debug($"  ソースから削除");
+                }
+            }
+            else if (_fileOps.FileExists(path))
+            {
+                var copyResult = _fileOps.TryCopyFile(path, sourcePath2);
+                if (copyResult.IsSuccess)
+                {
+                    _logger.Debug($"  ソースに反映");
+                }
+                else
+                {
+                    _logger.Error($"  エラー: {copyResult.ErrorMessage}");
+                }
+            }
         }
-        else if (_fileOps.FileExists(path))
+        catch (InvalidOperationException ex)
         {
-            _fileOps.CopyFile(path, sourcePath2);
-            Console.WriteLine($"  ✓ ソースに反映");
+            _logger.Error($"  セキュリティエラー: {ex.Message}", ex);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"  エラー: {ex.Message}", ex);
         }
     }
 
@@ -238,7 +387,36 @@ public class SyncCoordinator : ISyncCoordinator
         if (!_fileOps.DirectoryExists(targetPath))
         {
             _fileOps.CreateDirectory(targetPath);
-            Console.WriteLine($"✓ ターゲットフォルダを作成しました: {targetPath}");
+            _logger.Info($"ターゲットフォルダを作成しました: {targetPath}");
         }
+    }
+
+    /// <summary>
+    /// リソースを解放します。
+    /// </summary>
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// リソースを解放します。
+    /// </summary>
+    protected virtual void Dispose(bool disposing)
+    {
+        if (_disposed)
+            return;
+
+        if (disposing)
+        {
+            // マネージドリソースの解放
+            _sourceWatcher?.StopWatching();
+            _targetWatcher?.StopWatching();
+            _sourceWatcher = null;
+            _targetWatcher = null;
+        }
+
+        _disposed = true;
     }
 }

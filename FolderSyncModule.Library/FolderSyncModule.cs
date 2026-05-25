@@ -1,3 +1,5 @@
+using FolderSyncModule.Library.Models;
+
 namespace FolderSyncModule.Library;
 
 /// <summary>
@@ -52,11 +54,12 @@ public class FolderSyncModule
     /// <param name="mode">同期モード（デフォルト：単向同期）</param>
     /// <param name="syncType">同期タイプ（デフォルト：ワンタイム同期）</param>
     /// <param name="scope">同期範囲（デフォルト：差分のみ）</param>
-    public static void Sync(string sourcePath, string targetPath, SyncMode mode = SyncMode.OneWay,
+    /// <returns>同期処理の結果</returns>
+    public static SyncResult Sync(string sourcePath, string targetPath, SyncMode mode = SyncMode.OneWay,
         SyncType syncType = SyncType.OneTime, SyncScope scope = SyncScope.DiffOnly)
     {
         _coordinator = new SyncCoordinator();
-        _coordinator.Sync(sourcePath, targetPath, mode, syncType, scope);
+        return _coordinator.Sync(sourcePath, targetPath, mode, syncType, scope);
     }
 
     /// <summary>

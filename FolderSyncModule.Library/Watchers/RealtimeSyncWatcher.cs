@@ -1,15 +1,26 @@
+using System.Collections.Concurrent;
+
 namespace FolderSyncModule.Library;
 
 /// <summary>
 /// ファイルシステムの変更をリアルタイムで監視するクラス。
 /// FileSystemWatcher を使用してファイルの作成・更新・削除を検出し、
 /// コールバック経由で呼び出し元に通知します。
+/// イベントキューにより、大量のイベントを安全に処理します。
 /// </summary>
-public class RealtimeSyncWatcher : IRealtimeSyncWatcher
+public class RealtimeSyncWatcher : IRealtimeSyncWatcher, IDisposable
 {
     private FileSystemWatcher? _watcher;
-    private bool _syncInProgress = false;
     private readonly Action<string, string, string, string> _onFileChanged;
+    private readonly BlockingCollection<FileChangeEvent> _eventQueue = new(new ConcurrentQueue<FileChangeEvent>());
+    private readonly CancellationTokenSource _cancellationTokenSource = new();
+    private Task? _processingTask;
+    private bool _disposed = false;
+
+    /// <summary>
+    /// ファイル変更イベントを表す構造体。
+    /// </summary>
+    private record FileChangeEvent(string FullPath, string BasePath, string Action);
 
     /// <summary>
     /// コンストラクタ。
@@ -26,6 +37,7 @@ public class RealtimeSyncWatcher : IRealtimeSyncWatcher
     /// <summary>
     /// 指定されたフォルダの監視を開始します。
     /// 既に監視中の場合は何もしません。
+    /// イベント処理用のバックグラウンドタスクを起動します。
     /// </summary>
     public void StartWatching(string folderPath)
     {
@@ -43,6 +55,9 @@ public class RealtimeSyncWatcher : IRealtimeSyncWatcher
         _watcher.Renamed += (s, e) => OnChanged(e.FullPath, folderPath, "名前変更");
 
         _watcher.EnableRaisingEvents = true;
+
+        // イベント処理タスクを開始
+        _processingTask = Task.Run(() => ProcessEventQueue(_cancellationTokenSource.Token));
     }
 
     /// <summary>
@@ -52,31 +67,112 @@ public class RealtimeSyncWatcher : IRealtimeSyncWatcher
     {
         _watcher?.Dispose();
         _watcher = null;
+
+        // イベント処理を停止
+        _eventQueue.CompleteAdding();
+        _processingTask?.Wait(TimeSpan.FromSeconds(5));
     }
 
     /// <summary>
     /// ファイル変更イベントの処理。
-    /// 複数のイベントが短時間に発火するのを防ぐため、
-    /// _syncInProgress フラグで同期中の重複呼び出しをブロックしています。
+    /// イベントをキューに追加します。
     /// </summary>
     private void OnChanged(string fullPath, string basePath, string action)
     {
-        // 同期中の場合は重複呼び出しをスキップ
-        if (_syncInProgress)
-            return;
-
-        _syncInProgress = true;
         try
         {
-            // ファイル操作の完了を待つ
-            System.Threading.Thread.Sleep(500);
-            string relativePath = Path.GetRelativePath(basePath, fullPath);
-            _onFileChanged(fullPath, basePath, action, relativePath);
+            // イベントをキューに追加（キューが満杯になることを防ぐ）
+            if (!_eventQueue.IsAddingCompleted)
+            {
+                _eventQueue.TryAdd(new FileChangeEvent(fullPath, basePath, action), TimeSpan.FromMilliseconds(100));
+            }
         }
-        finally
+        catch (InvalidOperationException)
         {
-            _syncInProgress = false;
+            // キューが既に完了している場合は無視
         }
+    }
+
+    /// <summary>
+    /// イベントキューを処理するバックグラウンドタスク。
+    /// 重複イベントを排除し、順次処理します。
+    /// </summary>
+    private void ProcessEventQueue(CancellationToken cancellationToken)
+    {
+        var lastProcessedEvents = new Dictionary<string, DateTime>();
+        var debounceTime = TimeSpan.FromMilliseconds(500);
+
+        foreach (var evt in _eventQueue.GetConsumingEnumerable(cancellationToken))
+        {
+            try
+            {
+                if (cancellationToken.IsCancellationRequested)
+                    break;
+
+                // 重複イベントを排除（デバウンス処理）
+                var key = $"{evt.FullPath}:{evt.Action}";
+                var now = DateTime.UtcNow;
+
+                if (lastProcessedEvents.TryGetValue(key, out var lastTime))
+                {
+                    if (now - lastTime < debounceTime)
+                    {
+                        // 短時間内の重複イベントをスキップ
+                        continue;
+                    }
+                }
+
+                lastProcessedEvents[key] = now;
+
+                // ファイル操作の完了を待つ
+                Thread.Sleep(100);
+
+                string relativePath = Path.GetRelativePath(evt.BasePath, evt.FullPath);
+                _onFileChanged(evt.FullPath, evt.BasePath, evt.Action, relativePath);
+
+                // 古いエントリをクリーンアップ（メモリリーク防止）
+                var oldKeys = lastProcessedEvents
+                    .Where(kv => now - kv.Value > TimeSpan.FromMinutes(5))
+                    .Select(kv => kv.Key)
+                    .ToList();
+                foreach (var oldKey in oldKeys)
+                {
+                    lastProcessedEvents.Remove(oldKey);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"イベント処理エラー: {ex.Message}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// リソースを解放します。
+    /// </summary>
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// リソースを解放します。
+    /// </summary>
+    protected virtual void Dispose(bool disposing)
+    {
+        if (_disposed)
+            return;
+
+        if (disposing)
+        {
+            StopWatching();
+            _cancellationTokenSource.Cancel();
+            _cancellationTokenSource.Dispose();
+            _eventQueue.Dispose();
+        }
+
+        _disposed = true;
     }
 }
 

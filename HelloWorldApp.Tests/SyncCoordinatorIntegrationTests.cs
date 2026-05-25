@@ -127,38 +127,41 @@ public class SyncCoordinatorIntegrationTests : IDisposable
     }
 
     [Fact]
-    public void Sync_SameSourceAndTarget_ShouldThrow()
+    public void Sync_SameSourceAndTarget_ShouldReturnFailure()
     {
         string dir = Path.Combine(_testDir, "same");
         Directory.CreateDirectory(dir);
 
-        var ex = Assert.Throws<InvalidOperationException>(() =>
-            _coordinator.Sync(dir, dir, SyncMode.OneWay, SyncType.OneTime, SyncScope.FileOnly));
-        Assert.Contains("同じフォルダ", ex.Message);
+        var result = _coordinator.Sync(dir, dir, SyncMode.OneWay, SyncType.OneTime, SyncScope.FileOnly);
+        
+        Assert.False(result.IsSuccess);
+        Assert.Contains("同じフォルダ", result.Errors.FirstOrDefault()?.ErrorMessage ?? "");
     }
 
     [Fact]
-    public void Sync_TargetIsSubfolderOfSource_ShouldThrow()
+    public void Sync_TargetIsSubfolderOfSource_ShouldReturnFailure()
     {
         string sourceDir = Path.Combine(_testDir, "source");
         string targetDir = Path.Combine(sourceDir, "nested_target");
         Directory.CreateDirectory(sourceDir);
 
-        var ex = Assert.Throws<InvalidOperationException>(() =>
-            _coordinator.Sync(sourceDir, targetDir, SyncMode.OneWay, SyncType.OneTime, SyncScope.FileOnly));
-        Assert.Contains("サブフォルダ", ex.Message);
+        var result = _coordinator.Sync(sourceDir, targetDir, SyncMode.OneWay, SyncType.OneTime, SyncScope.FileOnly);
+        
+        Assert.False(result.IsSuccess);
+        Assert.Contains("サブフォルダ", result.Errors.FirstOrDefault()?.ErrorMessage ?? "");
     }
 
     [Fact]
-    public void Sync_SourceIsSubfolderOfTarget_ShouldThrow()
+    public void Sync_SourceIsSubfolderOfTarget_ShouldReturnFailure()
     {
         string targetDir = Path.Combine(_testDir, "target");
         string sourceDir = Path.Combine(targetDir, "nested_source");
         Directory.CreateDirectory(sourceDir);
 
-        var ex = Assert.Throws<InvalidOperationException>(() =>
-            _coordinator.Sync(sourceDir, targetDir, SyncMode.OneWay, SyncType.OneTime, SyncScope.FileOnly));
-        Assert.Contains("サブフォルダ", ex.Message);
+        var result = _coordinator.Sync(sourceDir, targetDir, SyncMode.OneWay, SyncType.OneTime, SyncScope.FileOnly);
+        
+        Assert.False(result.IsSuccess);
+        Assert.Contains("サブフォルダ", result.Errors.FirstOrDefault()?.ErrorMessage ?? "");
     }
 }
 

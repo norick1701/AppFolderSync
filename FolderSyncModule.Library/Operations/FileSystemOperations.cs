@@ -1,3 +1,6 @@
+using FolderSyncModule.Library.Models;
+using FolderSyncModule.Library.Utils;
+
 namespace FolderSyncModule.Library;
 
 /// <summary>
@@ -65,5 +68,226 @@ public class FileSystemOperations : IFileSystemOperations
     /// ディレクトリが存在するかを確認します。
     /// </summary>
     public bool DirectoryExists(string path) => Directory.Exists(path);
+
+    /// <summary>
+    /// ファイルサイズを取得します。
+    /// </summary>
+    public long GetFileSize(string filePath)
+    {
+        try
+        {
+            return new FileInfo(filePath).Length;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    // 例外安全なメソッド（エラーを Result 型で返す）
+
+    /// <summary>
+    /// ファイルコピーのバッファサイズ（1MB）。
+    /// 大きなバッファサイズにより、特に大きなファイルのコピーが高速化されます。
+    /// </summary>
+    private const int BufferSize = 1024 * 1024; // 1MB
+
+    /// <summary>
+    /// ファイルを安全にコピーします。失敗時は Result でエラー情報を返します。
+    /// 大きなバッファサイズ（1MB）を使用して高速化しています。
+    /// </summary>
+    public OperationResult TryCopyFile(string sourceFile, string targetFile)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(targetFile)!);
+            
+            // 最適化されたバッファサイズでコピー
+            using var sourceStream = new FileStream(sourceFile, FileMode.Open, FileAccess.Read, FileShare.Read, BufferSize, FileOptions.SequentialScan);
+            using var targetStream = new FileStream(targetFile, FileMode.Create, FileAccess.Write, FileShare.None, BufferSize, FileOptions.SequentialScan);
+            sourceStream.CopyTo(targetStream, BufferSize);
+            
+            return OperationResult.Success(targetFile);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return OperationResult.Failure(
+                $"アクセスが拒否されました: {ex.Message}",
+                nameof(UnauthorizedAccessException),
+                targetFile);
+        }
+        catch (PathTooLongException ex)
+        {
+            return OperationResult.Failure(
+                $"パスが長すぎます: {ex.Message}",
+                nameof(PathTooLongException),
+                targetFile);
+        }
+        catch (NotSupportedException ex)
+        {
+            return OperationResult.Failure(
+                $"サポートされていない操作です: {ex.Message}",
+                nameof(NotSupportedException),
+                targetFile);
+        }
+        catch (IOException ex)
+        {
+            return OperationResult.Failure(
+                $"ファイルコピーに失敗しました: {ex.Message}",
+                nameof(IOException),
+                targetFile);
+        }
+        catch (Exception ex)
+        {
+            return OperationResult.Failure(
+                $"予期しないエラー: {ex.Message}",
+                ex.GetType().Name,
+                targetFile);
+        }
+    }
+
+    /// <summary>
+    /// ファイルを安全に削除します。失敗時は Result でエラー情報を返します。
+    /// </summary>
+    public OperationResult TryDeleteFile(string filePath)
+    {
+        try
+        {
+            if (File.Exists(filePath))
+            {
+                File.Delete(filePath);
+            }
+            return OperationResult.Success(filePath);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return OperationResult.Failure(
+                $"アクセスが拒否されました: {ex.Message}",
+                nameof(UnauthorizedAccessException),
+                filePath);
+        }
+        catch (IOException ex)
+        {
+            return OperationResult.Failure(
+                $"ファイル削除に失敗しました: {ex.Message}",
+                nameof(IOException),
+                filePath);
+        }
+        catch (Exception ex)
+        {
+            return OperationResult.Failure(
+                $"予期しないエラー: {ex.Message}",
+                ex.GetType().Name,
+                filePath);
+        }
+    }
+
+    /// <summary>
+    /// ディレクトリを安全に削除します。失敗時は Result でエラー情報を返します。
+    /// </summary>
+    public OperationResult TryDeleteDirectory(string directoryPath)
+    {
+        try
+        {
+            if (Directory.Exists(directoryPath))
+            {
+                Directory.Delete(directoryPath, true);
+            }
+            return OperationResult.Success(directoryPath);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return OperationResult.Failure(
+                $"アクセスが拒否されました: {ex.Message}",
+                nameof(UnauthorizedAccessException),
+                directoryPath);
+        }
+        catch (IOException ex)
+        {
+            return OperationResult.Failure(
+                $"ディレクトリ削除に失敗しました: {ex.Message}",
+                nameof(IOException),
+                directoryPath);
+        }
+        catch (Exception ex)
+        {
+            return OperationResult.Failure(
+                $"予期しないエラー: {ex.Message}",
+                ex.GetType().Name,
+                directoryPath);
+        }
+    }
+
+    /// <summary>
+    /// 指定されたパスのすべてのファイルを取得します（シンボリックリンク除外オプション付き）。
+    /// </summary>
+    public OperationResult<string[]> TryGetFiles(string path, bool excludeSymbolicLinks = true)
+    {
+        try
+        {
+            EnumerationOptions options = new EnumerationOptions
+            {
+                RecurseSubdirectories = false,
+                AttributesToSkip = excludeSymbolicLinks ? FileAttributes.ReparsePoint : 0
+            };
+
+            string[] files = Directory.GetFiles(path, "*", options);
+            return OperationResult<string[]>.Success(files);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return OperationResult<string[]>.Failure(
+                $"アクセスが拒否されました: {ex.Message}",
+                nameof(UnauthorizedAccessException));
+        }
+        catch (DirectoryNotFoundException ex)
+        {
+            return OperationResult<string[]>.Failure(
+                $"ディレクトリが見つかりません: {ex.Message}",
+                nameof(DirectoryNotFoundException));
+        }
+        catch (Exception ex)
+        {
+            return OperationResult<string[]>.Failure(
+                $"予期しないエラー: {ex.Message}",
+                ex.GetType().Name);
+        }
+    }
+
+    /// <summary>
+    /// 指定されたパスのすべてのディレクトリを取得します（シンボリックリンク除外オプション付き）。
+    /// </summary>
+    public OperationResult<string[]> TryGetDirectories(string path, bool excludeSymbolicLinks = true)
+    {
+        try
+        {
+            EnumerationOptions options = new EnumerationOptions
+            {
+                RecurseSubdirectories = false,
+                AttributesToSkip = excludeSymbolicLinks ? FileAttributes.ReparsePoint : 0
+            };
+
+            string[] directories = Directory.GetDirectories(path, "*", options);
+            return OperationResult<string[]>.Success(directories);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return OperationResult<string[]>.Failure(
+                $"アクセスが拒否されました: {ex.Message}",
+                nameof(UnauthorizedAccessException));
+        }
+        catch (DirectoryNotFoundException ex)
+        {
+            return OperationResult<string[]>.Failure(
+                $"ディレクトリが見つかりません: {ex.Message}",
+                nameof(DirectoryNotFoundException));
+        }
+        catch (Exception ex)
+        {
+            return OperationResult<string[]>.Failure(
+                $"予期しないエラー: {ex.Message}",
+                ex.GetType().Name);
+        }
+    }
 }
 

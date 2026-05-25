@@ -4,7 +4,7 @@ namespace FolderSyncModule.Library;
 /// ファイルシステムの変更をリアルタイムで監視するインターフェース。
 /// テスト時にモック化可能にするために設計されています。
 /// </summary>
-public interface IRealtimeSyncWatcher
+public interface IRealtimeSyncWatcher : IDisposable
 {
     /// <summary>指定されたフォルダの監視を開始します。</summary>
     void StartWatching(string folderPath);

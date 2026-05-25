@@ -1,3 +1,5 @@
+using FolderSyncModule.Library.Models;
+
 namespace FolderSyncModule.Library;
 
 /// <summary>
@@ -29,4 +31,24 @@ public interface IFileSystemOperations
 
     /// <summary>ディレクトリが存在するかを確認します。</summary>
     bool DirectoryExists(string path);
+
+    // 例外安全なメソッド（エラーを Result 型で返す）
+
+    /// <summary>ファイルを安全にコピーします。失敗時は Result でエラー情報を返します。</summary>
+    OperationResult TryCopyFile(string sourceFile, string targetFile);
+
+    /// <summary>ファイルを安全に削除します。失敗時は Result でエラー情報を返します。</summary>
+    OperationResult TryDeleteFile(string filePath);
+
+    /// <summary>ディレクトリを安全に削除します。失敗時は Result でエラー情報を返します。</summary>
+    OperationResult TryDeleteDirectory(string directoryPath);
+
+    /// <summary>指定されたパスのすべてのファイルを取得します（シンボリックリンク除外オプション付き）。</summary>
+    OperationResult<string[]> TryGetFiles(string path, bool excludeSymbolicLinks = true);
+
+    /// <summary>指定されたパスのすべてのディレクトリを取得します（シンボリックリンク除外オプション付き）。</summary>
+    OperationResult<string[]> TryGetDirectories(string path, bool excludeSymbolicLinks = true);
+
+    /// <summary>ファイルサイズを取得します。</summary>
+    long GetFileSize(string filePath);
 }
