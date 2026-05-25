@@ -41,7 +41,10 @@ public class OperationResult
     /// <summary>
     /// 失敗結果を作成します。
     /// </summary>
-    public static OperationResult Failure(string errorMessage, string? exceptionType = null, string? targetPath = null)
+    public static OperationResult Failure(
+        string errorMessage, 
+        string? exceptionType = null, 
+        string? targetPath = null)
     {
         return new OperationResult
         {
@@ -94,7 +97,9 @@ public class OperationResult<T>
     /// <summary>
     /// 失敗結果を作成します。
     /// </summary>
-    public static OperationResult<T> Failure(string errorMessage, string? exceptionType = null)
+    public static OperationResult<T> Failure(
+        string errorMessage, 
+        string? exceptionType = null)
     {
         return new OperationResult<T>
         {

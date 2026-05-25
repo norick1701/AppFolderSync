@@ -33,7 +33,10 @@ public class SyncCoordinator : ISyncCoordinator
     /// 依存するコンポーネントを外部から注入可能にします。
     /// テスト時にモックを渡すことで動作を検証できます。
     /// </summary>
-    public SyncCoordinator(IFileSystemOperations fileOps, IDiffDetector diffDetector, ILogger? logger = null)
+    public SyncCoordinator(
+        IFileSystemOperations fileOps, 
+        IDiffDetector diffDetector, 
+        ILogger? logger = null)
     {
         _fileOps = fileOps;
         _diffDetector = diffDetector;
@@ -44,25 +47,45 @@ public class SyncCoordinator : ISyncCoordinator
     /// フォルダの同期を実行します。
     /// 指定された設定に従い、ワンタイム同期またはリアルタイム監視を行います。
     /// </summary>
-    public SyncResult Sync(string sourcePath, string targetPath, SyncMode mode, SyncType syncType, SyncScope scope)
+    public SyncResult Sync(
+        string sourcePath, 
+        string targetPath, 
+        SyncMode mode, 
+        SyncType syncType, 
+        SyncScope scope)
+    {
+        var options = new SyncOptions(sourcePath, targetPath)
+        {
+            Mode = mode,
+            SyncType = syncType,
+            Scope = scope
+        };
+        return Sync(options);
+    }
+
+    /// <summary>
+    /// フォルダの同期を実行します（設定オブジェクト使用）。
+    /// SyncOptions を使って引数を簡潔にします。
+    /// </summary>
+    public SyncResult Sync(SyncOptions options)
     {
         var stopwatch = Stopwatch.StartNew();
         
         try
         {
-            ValidatePaths(sourcePath, targetPath);
+            ValidatePaths(options.SourcePath, options.TargetPath);
 
-            _logger.Info($"同期モード: {(mode == SyncMode.OneWay ? "単向同期" : "双方向同期")}");
-            _logger.Info($"同期タイプ: {(syncType == SyncType.OneTime ? "ワンタイム同期" : "リアルタイム監視")}");
-            _logger.Info($"同期範囲: {GetScopeDescription(scope)}");
+            _logger.Info($"同期モード: {(options.Mode == SyncMode.OneWay ? "単向同期" : "双方向同期")}");
+            _logger.Info($"同期タイプ: {(options.SyncType == SyncType.OneTime ? "ワンタイム同期" : "リアルタイム監視")}");
+            _logger.Info($"同期範囲: {GetScopeDescription(options.Scope)}");
 
             // ワンタイム同期を実行
-            var result = PerformSync(sourcePath, targetPath, mode, scope);
+            var result = PerformSync(options.SourcePath, options.TargetPath, options.Mode, options.Scope);
 
             // リアルタイム監視が指定されている場合は開始
-            if (syncType == SyncType.Realtime)
+            if (options.SyncType == SyncType.Realtime)
             {
-                StartRealtimeSync(sourcePath, targetPath, mode, scope);
+                StartRealtimeSync(options.SourcePath, options.TargetPath, options.Mode, options.Scope);
             }
 
             stopwatch.Stop();
@@ -109,7 +132,11 @@ public class SyncCoordinator : ISyncCoordinator
     /// 実際の同期処理を実行します。
     /// 同期スコープに応じた戦略を選択し、実行します。
     /// </summary>
-    private SyncResult PerformSync(string sourcePath, string targetPath, SyncMode mode, SyncScope scope)
+    private SyncResult PerformSync(
+        string sourcePath, 
+        string targetPath, 
+        SyncMode mode, 
+        SyncScope scope)
     {
         var errors = new List<SyncError>();
         int filesSucceeded = 0;
@@ -169,7 +196,11 @@ public class SyncCoordinator : ISyncCoordinator
     /// ディレクトリを再帰的に同期します。
     /// サブディレクトリが存在しない場合は作成します。
     /// </summary>
-    private (int success, List<SyncError> errors) SyncDirectoriesRecursive(string sourcePath, string targetPath, SyncMode mode, SyncScope scope)
+    private (int success, List<SyncError> errors) SyncDirectoriesRecursive(
+        string sourcePath, 
+        string targetPath, 
+        SyncMode mode, 
+        SyncScope scope)
     {
         var errors = new List<SyncError>();
         int success = 0;
@@ -220,7 +251,11 @@ public class SyncCoordinator : ISyncCoordinator
     /// リアルタイム監視を開始します。
     /// ファイル変更を検出するたびに同期が実行されます。
     /// </summary>
-    private void StartRealtimeSync(string sourcePath, string targetPath, SyncMode mode, SyncScope scope)
+    private void StartRealtimeSync(
+        string sourcePath, 
+        string targetPath, 
+        SyncMode mode, 
+        SyncScope scope)
     {
         _logger.Info("【リアルタイム監視開始】");
         _logger.Info("ファイル変更を監視中... (終了するには Ctrl+C を押してください)");
@@ -242,7 +277,11 @@ public class SyncCoordinator : ISyncCoordinator
     /// <summary>
     /// ソースでのファイル変更を処理します。
     /// </summary>
-    private void OnSourceChanged(string path, string sourcePath, string targetPath, string action, string relativePath)
+    private void OnSourceChanged(
+        string path, 
+        string sourcePath, 
+        string targetPath, 
+        string action, string relativePath)
     {
         try
         {
@@ -292,7 +331,12 @@ public class SyncCoordinator : ISyncCoordinator
     /// ターゲットでのファイル変更を処理します。
     /// 双方向同期時のみ呼び出されます。
     /// </summary>
-    private void OnTargetChanged(string path, string targetPath, string sourcePath, string action, string relativePath)
+    private void OnTargetChanged(
+        string path, 
+        string targetPath, 
+        string sourcePath, 
+        string action, 
+        string relativePath)
     {
         try
         {

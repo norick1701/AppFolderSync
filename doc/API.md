@@ -15,11 +15,11 @@ FolderSyncModule は、フォルダ間でのファイル同期機能を提供す
 
 #### 静的メソッド
 
-##### `Sync()`
+##### `Sync()` - 従来のAPI
 
 **メソッド署名**
 ```csharp
-public static void Sync(
+public static SyncResult Sync(
     string sourcePath,
     string targetPath,
     SyncMode mode = SyncMode.OneWay,
@@ -42,7 +42,7 @@ public static void Sync(
 | `scope` | SyncScope | DiffOnly | 同期範囲（コピーのみ/削除も含む/差分のみ） |
 
 **戻り値**
-void
+`SyncResult` - 同期処理の結果
 
 **例外**
 
@@ -55,16 +55,70 @@ void
 **使用例**
 ```csharp
 // 基本的な使用
-FolderSyncModule.Sync("C:/Source", "C:/Target");
+var result = FolderSyncModule.Sync("C:/Source", "C:/Target");
 
 // カスタム設定
-FolderSyncModule.Sync(
+var result = FolderSyncModule.Sync(
     "C:/Source",
     "C:/Target",
     mode: SyncMode.TwoWay,
     syncType: SyncType.Realtime,
     scope: SyncScope.WithDeletion
 );
+```
+
+---
+
+##### `Sync()` - 新しいAPI（推奨）
+
+**メソッド署名**
+```csharp
+public static SyncResult Sync(SyncOptions options)
+```
+
+**説明**
+フォルダの同期を実行します（設定オブジェクト使用）。`SyncOptions` を使って引数を簡潔にします。
+
+**パラメータ**
+
+| パラメータ | 型 | 説明 |
+|-----------|----|----|
+| `options` | SyncOptions | 同期設定オプション |
+
+**戻り値**
+`SyncResult` - 同期処理の結果
+
+**例外**
+
+| 例外 | 条件 |
+|------|------|
+| `DirectoryNotFoundException` | sourcePath が存在しない場合 |
+| `UnauthorizedAccessException` | ファイル操作権限がない場合 |
+| `IOException` | ファイルロック中など、I/Oエラー発生時 |
+
+**使用例**
+```csharp
+// 基本的な使用
+var options = new SyncOptions("C:/Source", "C:/Target");
+var result = FolderSyncModule.Sync(options);
+
+// Builderパターンでカスタム設定
+var options = new SyncOptions("C:/Source", "C:/Target")
+    .WithMode(SyncMode.TwoWay)
+    .WithSyncType(SyncType.Realtime)
+    .WithScope(SyncScope.WithDeletion);
+var result = FolderSyncModule.Sync(options);
+
+// プロパティで直接設定
+var options = new SyncOptions
+{
+    SourcePath = "C:/Source",
+    TargetPath = "C:/Target",
+    Mode = SyncMode.TwoWay,
+    SyncType = SyncType.Realtime,
+    Scope = SyncScope.WithDeletion
+};
+var result = FolderSyncModule.Sync(options);
 ```
 
 ---
@@ -104,7 +158,54 @@ FolderSyncModule.StopRealtimeSync();
 
 ---
 
-### 2. Enum 定義
+### 2. SyncOptions クラス
+
+#### 説明
+同期処理の設定オプションを保持するクラス。Builder パターンで使いやすく設定できます。
+
+#### プロパティ
+
+| プロパティ | 型 | デフォルト | 説明 |
+|-----------|----|---------|----|
+| `SourcePath` | string | "" | 同期元ディレクトリパス |
+| `TargetPath` | string | "" | 同期先ディレクトリパス |
+| `Mode` | SyncMode | OneWay | 同期モード（単向/双方向） |
+| `SyncType` | SyncType | OneTime | 同期タイプ（ワンタイム/リアルタイム） |
+| `Scope` | SyncScope | DiffOnly | 同期範囲（コピーのみ/削除も含む/差分のみ） |
+
+#### コンストラクタ
+
+```csharp
+// デフォルトコンストラクタ
+public SyncOptions()
+
+// パスを指定するコンストラクタ
+public SyncOptions(string sourcePath, string targetPath)
+```
+
+#### メソッド
+
+##### `WithMode()`
+```csharp
+public SyncOptions WithMode(SyncMode mode)
+```
+同期モードを設定します（Builder パターン）。
+
+##### `WithSyncType()`
+```csharp
+public SyncOptions WithSyncType(SyncType syncType)
+```
+同期タイプを設定します（Builder パターン）。
+
+##### `WithScope()`
+```csharp
+public SyncOptions WithScope(SyncScope scope)
+```
+同期範囲を設定します（Builder パターン）。
+
+---
+
+### 3. Enum 定義
 
 #### SyncMode
 

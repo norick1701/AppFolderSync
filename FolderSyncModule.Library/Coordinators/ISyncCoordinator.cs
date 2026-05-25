@@ -14,6 +14,12 @@ public interface ISyncCoordinator : IDisposable
     /// </summary>
     SyncResult Sync(string sourcePath, string targetPath, SyncMode mode, SyncType syncType, SyncScope scope);
 
+    /// <summary>
+    /// フォルダの同期を実行します（設定オブジェクト使用）。
+    /// SyncOptions を使って引数を簡潔にします。
+    /// </summary>
+    SyncResult Sync(SyncOptions options);
+
     /// <summary>リアルタイム監視を停止します。</summary>
     void StopRealtimeSync();
 }

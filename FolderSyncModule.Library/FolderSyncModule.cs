@@ -63,6 +63,18 @@ public class FolderSyncModule
     }
 
     /// <summary>
+    /// フォルダの同期を実行します（設定オブジェクト使用）。
+    /// SyncOptions を使って引数を簡潔にします。
+    /// </summary>
+    /// <param name="options">同期設定オプション</param>
+    /// <returns>同期処理の結果</returns>
+    public static SyncResult Sync(SyncOptions options)
+    {
+        _coordinator = new SyncCoordinator();
+        return _coordinator.Sync(options);
+    }
+
+    /// <summary>
     /// リアルタイム監視を停止します。
     /// SyncType.Realtime で同期している場合に呼び出します。
     /// </summary>

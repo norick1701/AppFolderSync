@@ -1,4 +1,5 @@
 ﻿using FolderSyncModule.Library;
+using FolderSyncModule.Library.Models;
 
 Console.WriteLine("フォルダ同期ライブラリのデモ");
 Console.WriteLine("================================\n");
@@ -63,6 +64,27 @@ FolderSyncModule.Library.FolderSyncModule.Sync(
 
 Console.WriteLine("\n同期後のソース構成:");
 PrintFolderStructure(sourceFolder);
+
+Console.WriteLine("\n同期後のターゲット構成:");
+PrintFolderStructure(targetFolder);
+
+// === 例4: 新しいAPI（SyncOptionsを使用） ===
+Console.WriteLine("\n\n【例4: SyncOptionsを使った簡潔な記述】");
+Console.WriteLine("====================");
+CleanupFolders(sourceFolder, targetFolder);
+SetupTestFolders(sourceFolder);
+Directory.CreateDirectory(targetFolder);
+File.WriteAllText(Path.Combine(targetFolder, "orphan.txt"), "ターゲット固有のファイル");
+
+Console.WriteLine($"ソース: {sourceFolder}");
+Console.WriteLine($"ターゲット: {targetFolder}\n");
+
+// Builderパターンで設定を組み立てる
+var options = new SyncOptions(sourceFolder, targetFolder)
+    .WithMode(SyncMode.OneWay)
+    .WithScope(SyncScope.WithDeletion);
+
+FolderSyncModule.Library.FolderSyncModule.Sync(options);
 
 Console.WriteLine("\n同期後のターゲット構成:");
 PrintFolderStructure(targetFolder);

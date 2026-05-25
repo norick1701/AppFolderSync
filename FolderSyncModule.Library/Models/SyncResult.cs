@@ -166,7 +166,10 @@ public class SyncError
     /// </summary>
     public string? ExceptionType { get; init; }
 
-    public SyncError(string filePath, string errorMessage, string? exceptionType = null)
+    public SyncError(
+        string filePath, 
+        string errorMessage, 
+        string? exceptionType = null)
     {
         FilePath = filePath;
         ErrorMessage = errorMessage;

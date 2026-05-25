@@ -34,6 +34,8 @@ dotnet run
 
 ### 基本的な使用方法
 
+**従来のAPI**
+
 ```csharp
 using HelloWorldApp;
 
@@ -48,6 +50,38 @@ FolderSyncModule.Sync(
     syncType: SyncType.Realtime,        // リアルタイム監視
     scope: SyncScope.WithDeletion       // 削除も同期
 );
+
+// リアルタイム監視停止
+FolderSyncModule.StopRealtimeSync();
+```
+
+**新しいAPI（推奨）**
+
+```csharp
+using HelloWorldApp;
+using HelloWorldApp.Models;
+
+// デフォルト同期
+var options = new SyncOptions("C:/Source", "C:/Target");
+FolderSyncModule.Sync(options);
+
+// Builderパターンで設定を組み立てる
+var options = new SyncOptions("C:/Source", "C:/Target")
+    .WithMode(SyncMode.TwoWay)
+    .WithSyncType(SyncType.Realtime)
+    .WithScope(SyncScope.WithDeletion);
+FolderSyncModule.Sync(options);
+
+// プロパティで直接設定
+var options = new SyncOptions
+{
+    SourcePath = "C:/Source",
+    TargetPath = "C:/Target",
+    Mode = SyncMode.TwoWay,
+    SyncType = SyncType.Realtime,
+    Scope = SyncScope.WithDeletion
+};
+FolderSyncModule.Sync(options);
 
 // リアルタイム監視停止
 FolderSyncModule.StopRealtimeSync();
