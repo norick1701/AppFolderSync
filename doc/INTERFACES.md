@@ -9,7 +9,7 @@ FolderSyncModule.Library は、DI（依存性注入）対応の設計を採用�
 ## インターフェース階層図
 
 ```
-ISyncStrategy (既存)
+ISyncStrategy
     ├─ FileOnlySyncStrategy
     ├─ WithDeletionSyncStrategy
     └─ DiffOnlySyncStrategy
@@ -22,9 +22,6 @@ IDiffDetector
 
 IRealtimeSyncWatcher
     └─ RealtimeSyncWatcher
-
-ISyncCoordinator
-    └─ SyncCoordinator
 ```
 
 ---
@@ -64,7 +61,7 @@ strategy.DeleteOrphanedFiles(sourceDir, targetDir);
 
 ### 2. IFileSystemOperations
 
-**名前空間**: `FolderSyncModule.Library.Operations`
+**名前空間**: `FolderSyncModule.Library`
 
 **責務**: ファイルシステム操作の抽象化
 
@@ -107,7 +104,7 @@ fileOps.CopyFile("source.txt", "target.txt");
 
 ### 3. IDiffDetector
 
-**名前空間**: `FolderSyncModule.Library.Detection`
+**名前空間**: `FolderSyncModule.Library`
 
 **責務**: ファイル差分の検出
 
@@ -165,7 +162,7 @@ foreach (var file in orphans)
 
 ### 4. IRealtimeSyncWatcher
 
-**名前空間**: `FolderSyncModule.Library.Watchers`
+**名前空間**: `FolderSyncModule.Library`
 
 **責務**: ファイルシステム変更の監視
 
@@ -206,83 +203,13 @@ watcher.StopWatching();
 
 ---
 
-### 5. ISyncCoordinator
-
-**名前空間**: `FolderSyncModule.Library.Coordinators`
-
-**責務**: 全体的な同期処理の調整
-
-```csharp
-public interface ISyncCoordinator
-{
-    /// <summary>フォルダの同期を実行します。</summary>
-    void Sync(string sourcePath, string targetPath, 
-              SyncMode mode, SyncType syncType, SyncScope scope);
-
-    /// <summary>リアルタイム監視を停止します。</summary>
-    void StopRealtimeSync();
-}
-```
-
-**実装クラス**:
-- `SyncCoordinator`: 標準的なコーディネータ
-
-**コンストラクタ**:
-
-```csharp
-// デフォルトコンストラクタ
-public SyncCoordinator()
-
-// DI対応コンストラクタ
-public SyncCoordinator(IFileSystemOperations fileOps, IDiffDetector diffDetector)
-```
-
-**メソッド詳細**:
-
-#### `Sync()`
-| パラメータ | 型 | 説明 |
-|-----------|----|----|
-| sourcePath | string | ソースディレクトリパス |
-| targetPath | string | ターゲットディレクトリパス |
-| mode | SyncMode | 同期モード（OneWay/TwoWay） |
-| syncType | SyncType | 同期タイプ（OneTime/Realtime） |
-| scope | SyncScope | 同期範囲（FileOnly/WithDeletion/DiffOnly） |
-
-#### `StopRealtimeSync()`
-- Realtime モードで実行中の監視を停止
-- リソースをクリーンアップ
-
-**使用例**:
-```csharp
-ISyncCoordinator coordinator = new SyncCoordinator();
-coordinator.Sync(
-    sourcePath: "C:/Source",
-    targetPath: "C:/Target",
-    mode: SyncMode.OneWay,
-    syncType: SyncType.OneTime,
-    scope: SyncScope.DiffOnly
-);
-```
-
-**DI での使用**:
-```csharp
-// カスタム実装を注入
-IFileSystemOperations fileOps = new CustomFileSystemOperations();
-IDiffDetector detector = new CustomDiffDetector();
-
-ISyncCoordinator coordinator = new SyncCoordinator(fileOps, detector);
-coordinator.Sync(...);
-```
-
----
-
 ## DI（依存性注入）パターン
 
 ### パターン1: デフォルト実装の使用
 
 ```csharp
 // 依存関係が自動的に構成される
-ISyncCoordinator coordinator = new SyncCoordinator();
+SyncCoordinator coordinator = new SyncCoordinator();
 coordinator.Sync(source, target);
 ```
 
@@ -304,7 +231,7 @@ class MockDiffDetector : IDiffDetector
 IFileSystemOperations mockFileOps = new MockFileSystemOperations();
 IDiffDetector mockDetector = new MockDiffDetector();
 
-ISyncCoordinator coordinator = new SyncCoordinator(mockFileOps, mockDetector);
+SyncCoordinator coordinator = new SyncCoordinator(mockFileOps, mockDetector);
 coordinator.Sync(source, target);
 ```
 
@@ -314,10 +241,10 @@ coordinator.Sync(source, target);
 var services = new ServiceCollection();
 services.AddScoped<IFileSystemOperations, FileSystemOperations>();
 services.AddScoped<IDiffDetector, DiffDetector>();
-services.AddScoped<ISyncCoordinator, SyncCoordinator>();
+services.AddScoped<SyncCoordinator>();
 
 var provider = services.BuildServiceProvider();
-var coordinator = provider.GetRequiredService<ISyncCoordinator>();
+var coordinator = provider.GetRequiredService<SyncCoordinator>();
 ```
 
 ---
@@ -417,7 +344,6 @@ var coordinator = new SyncCoordinator(
 | **IFileSystemOperations** | ファイル操作抽象化 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
 | **IDiffDetector** | 差分検出 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ |
 | **IRealtimeSyncWatcher** | ファイル監視 | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ |
-| **ISyncCoordinator** | 全体調整 | ⭐⭐⭐⭐ | ⭐⭐⭐ |
 
 ---
 
@@ -426,7 +352,7 @@ var coordinator = new SyncCoordinator(
 | パターン | 使用箇所 | 目的 |
 |---------|---------|------|
 | **ストラテジー** | ISyncStrategy | 同期方式の切り替え |
-| **ファサード** | ISyncCoordinator | 複雑さの隠蔽 |
+| **ファサード** | FolderSyncModule | 複雑さの隠蔽 |
 | **デコレータ** | IFileSystemOperations | ファイル操作の統一 |
 | **オブザーバー** | IRealtimeSyncWatcher | ファイル変更通知 |
 | **DI** | すべてのインターフェース | テスト性・拡張性向上 |
@@ -457,7 +383,7 @@ IFileSystemOperations fileOps = new LoggingFileSystemOperations(
 );
 IDiffDetector detector = new DiffDetector();
 
-ISyncCoordinator coordinator = new SyncCoordinator(fileOps, detector);
+SyncCoordinator coordinator = new SyncCoordinator(fileOps, detector);
 
 coordinator.Sync(
     source, 

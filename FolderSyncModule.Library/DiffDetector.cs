@@ -1,6 +1,22 @@
 namespace FolderSyncModule.Library;
 
 /// <summary>
+/// ファイルの差分検出をカプセル化するインターフェース。
+/// テスト時にモック化可能にするために設計されています。
+/// </summary>
+public interface IDiffDetector
+{
+    /// <summary>ファイルが同期対象かどうかを判定します。</summary>
+    bool NeedsSync(string sourceFile, string targetFile);
+
+    /// <summary>ターゲットに存在するがソースに存在しないファイルを取得します。</summary>
+    IEnumerable<string> GetOrphanedFiles(string sourcePath, string targetPath);
+
+    /// <summary>ターゲットに存在するがソースに存在しないディレクトリを取得します。</summary>
+    IEnumerable<string> GetOrphanedDirectories(string sourcePath, string targetPath);
+}
+
+/// <summary>
 /// ファイルの差分を検出するクラス。
 /// 同期が必要なファイルや孤立したファイルの検出を担当します。
 /// </summary>
@@ -12,11 +28,9 @@ public class DiffDetector : IDiffDetector
     /// </summary>
     public bool NeedsSync(string sourceFile, string targetFile)
     {
-        // ターゲットが存在しない場合は同期が必要
         if (!File.Exists(targetFile))
             return true;
 
-        // ソースの方が新しい場合は同期が必要
         var sourceTime = File.GetLastWriteTime(sourceFile);
         var targetTime = File.GetLastWriteTime(targetFile);
 
@@ -25,7 +39,6 @@ public class DiffDetector : IDiffDetector
 
     /// <summary>
     /// ターゲットに存在するがソースに存在しないファイルを取得します。
-    /// 同期後に削除すべき「孤立ファイル」を特定するために使用されます。
     /// </summary>
     public IEnumerable<string> GetOrphanedFiles(string sourcePath, string targetPath)
     {
@@ -39,7 +52,6 @@ public class DiffDetector : IDiffDetector
 
     /// <summary>
     /// ターゲットに存在するがソースに存在しないディレクトリを取得します。
-    /// 同期後に削除すべき「孤立ディレクトリ」を特定するために使用されます。
     /// </summary>
     public IEnumerable<string> GetOrphanedDirectories(string sourcePath, string targetPath)
     {
@@ -51,4 +63,3 @@ public class DiffDetector : IDiffDetector
         return targetDirs.Where(d => !sourceDirs.Contains(Path.GetFileName(d)));
     }
 }
-

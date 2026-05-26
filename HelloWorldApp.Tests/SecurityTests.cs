@@ -1,5 +1,4 @@
 using FolderSyncModule.Library;
-using FolderSyncModule.Library.Utils;
 
 namespace HelloWorldApp.Tests;
 
