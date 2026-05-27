@@ -192,10 +192,10 @@ public class SyncCoordinator : IDisposable
 
                 var result = PerformSync(sourceDir, targetDir, mode, scope);
 
-                if (!result.IsSuccess && result.IsPartialSuccess)
-                    errors.AddRange(result.Errors);
+                errors.AddRange(result.Errors);
 
-                success++;
+                if (result.IsSuccess || result.IsPartialSuccess)
+                    success++;
             }
             catch (Exception ex)
             {

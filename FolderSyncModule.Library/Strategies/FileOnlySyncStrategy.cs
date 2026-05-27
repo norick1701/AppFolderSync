@@ -61,6 +61,7 @@ public class FileOnlySyncStrategy : ISyncStrategy
     public (int success, List<SyncError> errors) DeleteOrphanedFilesWithResult(
         string sourcePath, string targetPath, IFileSystemOperations fileOps, IDiffDetector diffDetector)
     {
+        // ファイルコピーのみなので、削除は行わない
         return (0, new List<SyncError>());
     }
 }
