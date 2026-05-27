@@ -58,6 +58,7 @@ public class FolderSyncModule
     public static SyncResult Sync(string sourcePath, string targetPath, SyncMode mode = SyncMode.OneWay,
         SyncType syncType = SyncType.OneTime, SyncScope scope = SyncScope.DiffOnly)
     {
+        _coordinator?.Dispose();
         _coordinator = new SyncCoordinator();
         return _coordinator.Sync(sourcePath, targetPath, mode, syncType, scope);
     }
@@ -70,6 +71,7 @@ public class FolderSyncModule
     /// <returns>同期処理の結果</returns>
     public static SyncResult Sync(SyncOptions options)
     {
+        _coordinator?.Dispose();
         _coordinator = new SyncCoordinator();
         return _coordinator.Sync(options);
     }

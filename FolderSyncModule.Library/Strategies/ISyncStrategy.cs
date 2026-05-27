@@ -9,16 +9,6 @@ namespace FolderSyncModule.Library;
 public interface ISyncStrategy
 {
     /// <summary>
-    /// ソースディレクトリのファイルをターゲットディレクトリに同期します。
-    /// </summary>
-    void SyncFiles(string sourcePath, string targetPath);
-
-    /// <summary>
-    /// ターゲットに存在するがソースに存在しないファイルを削除します。
-    /// </summary>
-    void DeleteOrphanedFiles(string sourcePath, string targetPath);
-
-    /// <summary>
     /// ソースディレクトリのファイルをターゲットディレクトリに同期します（エラーハンドリング付き）。
     /// </summary>
     /// <returns>(成功数, 失敗数, コピーバイト数, エラーリスト)</returns>

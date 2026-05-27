@@ -6,6 +6,8 @@ namespace HelloWorldApp.Tests;
 public class SyncStrategyTests : IDisposable
 {
     private readonly string _testDir;
+    private readonly FileSystemOperations _fileOps = new();
+    private readonly DiffDetector _diffDetector = new();
 
     public SyncStrategyTests()
     {
@@ -33,7 +35,7 @@ public class SyncStrategyTests : IDisposable
         File.WriteAllText(Path.Combine(sourceDir, "file2.txt"), "content2");
 
         // Act
-        strategy.SyncFiles(sourceDir, targetDir);
+        strategy.SyncFilesWithResult(sourceDir, targetDir, _fileOps);
 
         // Assert
         Assert.True(File.Exists(Path.Combine(targetDir, "file1.txt")));
@@ -53,7 +55,7 @@ public class SyncStrategyTests : IDisposable
         File.WriteAllText(Path.Combine(targetDir, "orphan.txt"), "orphan");
 
         // Act
-        strategy.DeleteOrphanedFiles(sourceDir, targetDir);
+        strategy.DeleteOrphanedFilesWithResult(sourceDir, targetDir, _fileOps, _diffDetector);
 
         // Assert
         Assert.True(File.Exists(Path.Combine(targetDir, "orphan.txt")));
@@ -74,7 +76,7 @@ public class SyncStrategyTests : IDisposable
         File.WriteAllText(Path.Combine(targetDir, "orphan.txt"), "orphan");
 
         // Act
-        strategy.DeleteOrphanedFiles(sourceDir, targetDir);
+        strategy.DeleteOrphanedFilesWithResult(sourceDir, targetDir, _fileOps, _diffDetector);
 
         // Assert
         Assert.False(File.Exists(Path.Combine(targetDir, "orphan.txt")));
@@ -103,7 +105,7 @@ public class SyncStrategyTests : IDisposable
         long targetSizeBefore = new FileInfo(targetFile).Length;
 
         // Act
-        strategy.SyncFiles(sourceDir, targetDir);
+        strategy.SyncFilesWithResult(sourceDir, targetDir, _fileOps);
 
         // Assert
         long targetSizeAfter = new FileInfo(targetFile).Length;
@@ -123,7 +125,7 @@ public class SyncStrategyTests : IDisposable
         File.WriteAllText(Path.Combine(sourceDir, "new.txt"), "new content");
 
         // Act
-        strategy.SyncFiles(sourceDir, targetDir);
+        strategy.SyncFilesWithResult(sourceDir, targetDir, _fileOps);
 
         // Assert
         Assert.True(File.Exists(Path.Combine(targetDir, "new.txt")));

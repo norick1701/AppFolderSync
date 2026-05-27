@@ -190,7 +190,7 @@ public class SyncCoordinator : IDisposable
                     _logger.Debug($"フォルダ作成: {dirName}");
                 }
 
-                var result = Sync(sourceDir, targetDir, mode, SyncType.OneTime, scope);
+                var result = PerformSync(sourceDir, targetDir, mode, scope);
 
                 if (!result.IsSuccess && result.IsPartialSuccess)
                     errors.AddRange(result.Errors);

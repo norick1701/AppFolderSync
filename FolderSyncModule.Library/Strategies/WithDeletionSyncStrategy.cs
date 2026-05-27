@@ -10,40 +10,6 @@ namespace FolderSyncModule.Library;
 public class WithDeletionSyncStrategy : ISyncStrategy
 {
     /// <summary>
-    /// ソースのすべてのファイルをターゲットにコピーします。
-    /// </summary>
-    public void SyncFiles(string sourcePath, string targetPath)
-    {
-        var sourceFiles = Directory.GetFiles(sourcePath);
-        foreach (var sourceFile in sourceFiles)
-        {
-            string fileName = Path.GetFileName(sourceFile);
-            string targetFile = Path.Combine(targetPath, fileName);
-            File.Copy(sourceFile, targetFile, overwrite: true);
-            Console.WriteLine($"  ✓ コピー: {fileName}");
-        }
-    }
-
-    /// <summary>
-    /// ターゲットに存在するがソースに存在しないファイルを削除します。
-    /// ターゲットをソースと完全に一致させるために使用されます。
-    /// </summary>
-    public void DeleteOrphanedFiles(string sourcePath, string targetPath)
-    {
-        var targetFiles = Directory.GetFiles(targetPath);
-        var sourceFiles = Directory.GetFiles(sourcePath).Select(f => Path.GetFileName(f)).ToHashSet();
-
-        foreach (var targetFile in targetFiles)
-        {
-            if (!sourceFiles.Contains(Path.GetFileName(targetFile)))
-            {
-                File.Delete(targetFile);
-                Console.WriteLine($"  ✓ 削除: {Path.GetFileName(targetFile)} (ソースに存在しない)");
-            }
-        }
-    }
-
-    /// <summary>
     /// ソースのすべてのファイルをターゲットにコピーします（エラーハンドリング付き）。
     /// </summary>
     public (int success, int failed, long bytesCopied, List<SyncError> errors) SyncFilesWithResult(
@@ -60,19 +26,17 @@ public class WithDeletionSyncStrategy : ISyncStrategy
             return (0, 1, 0, errors);
         }
 
-        var sourceFiles = filesResult.Value ?? Array.Empty<string>();
-        foreach (var sourceFile in sourceFiles)
+        foreach (var sourceFile in filesResult.Value ?? Array.Empty<string>())
         {
             try
             {
                 string fileName = Path.GetFileName(sourceFile);
                 string targetFile = Path.Combine(targetPath, fileName);
-                
+
                 var copyResult = fileOps.TryCopyFile(sourceFile, targetFile);
                 if (copyResult.IsSuccess)
                 {
-                    long fileSize = fileOps.GetFileSize(sourceFile);
-                    totalBytes += fileSize;
+                    totalBytes += fileOps.GetFileSize(sourceFile);
                     success++;
                     Console.WriteLine($"  ✓ コピー: {fileName}");
                 }
@@ -115,12 +79,11 @@ public class WithDeletionSyncStrategy : ISyncStrategy
             return (0, errors);
         }
 
-        var targetFiles = targetFilesResult.Value ?? Array.Empty<string>();
         var sourceFiles = (sourceFilesResult.Value ?? Array.Empty<string>())
             .Select(f => Path.GetFileName(f))
             .ToHashSet();
 
-        foreach (var targetFile in targetFiles)
+        foreach (var targetFile in targetFilesResult.Value ?? Array.Empty<string>())
         {
             if (!sourceFiles.Contains(Path.GetFileName(targetFile)))
             {
